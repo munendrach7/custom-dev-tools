@@ -1,0 +1,58 @@
+services:
+  # SQL database — persistent Microsoft SQL Server for the API Client.
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: devtools-db
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-DevToolsStrong123}
+      MSSQL_PID: Developer
+    volumes:
+      - devtools-db-data:/var/opt/mssql
+    restart: unless-stopped
+
+  # API Client backend: FastAPI, talks to SQL Server, proxies outbound calls.
+  api-client:
+    build:
+      context: ./py-server
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    container_name: devtools-api-client
+    environment:
+      DATABASE_URL: mssql+pymssql://sa:${MSSQL_SA_PASSWORD:-DevToolsStrong123}@db:1433/${MSSQL_DB:-devtools}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      TOKEN_EXPIRE_MINUTES: ${TOKEN_EXPIRE_MINUTES:-10080}
+      # Passthrough for networks that require an egress proxy (httpx honors these).
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  # JSON/JSONL viewer backend: Express file indexer.
+  jsonl-api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: devtools-jsonl-api
+    # Optional: mount host data to browse local JSONL files inside the container.
+    # volumes:
+    #   - ./data:/data:ro
+    restart: unless-stopped
+
+  # Frontend (nginx) — serves the SPA and reverse-proxies /api and /client.
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devtools-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api-client
+      - jsonl-api
+    restart: unless-stopped
+
+volumes:
+  devtools-db-data:

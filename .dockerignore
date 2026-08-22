@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.gitignore
+*.log
+py-server/.venv
+py-server/data
+py-server/__pycache__
+**/__pycache__
+data
+sample.jsonl
+.DS_Store

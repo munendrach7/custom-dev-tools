@@ -1,0 +1,11 @@
+node_modules
+dist
+.DS_Store
+*.log
+sample.jsonl
+py-server/.venv
+py-server/data
+py-server/__pycache__
+**/__pycache__
+data
+.env
