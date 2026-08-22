@@ -2,30 +2,16 @@
   "name": "custom-dev-tools",
   "version": "1.0.0",
   "private": true,
-  "description": "Custom Dev Tools — a workspace hosting a JSON/JSONL viewer and a Postman-like API client (Python/FastAPI backend, SQL-backed).",
+  "description": "Custom Dev Tools — a dockerized workspace hosting a JSON/JSONL viewer and a Postman-like API client. Monorepo root / dev orchestrator.",
   "scripts": {
-    "server": "node server/index.js",
-    "client": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "py": "cd py-server && python -m uvicorn app.main:app --reload --port 8000",
-    "dev": "concurrently -k -n JSONL,PY,CLIENT -c green,magenta,cyan \"npm:server\" \"npm:py\" \"npm:client\"",
-    "start": "npm run dev"
-  },
-  "dependencies": {
-    "@fluentui/react-components": "^9.74.6",
-    "@fluentui/react-icons": "^2.0.337",
-    "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "dev": "concurrently -k -n JSONL,API,WEB -c green,magenta,cyan \"npm:dev:jsonl\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:web": "npm --prefix frontend run dev",
+    "dev:jsonl": "npm --prefix services/jsonl-api start",
+    "dev:api": "cd services/api-client && python -m uvicorn app.main:app --reload --port 8000",
+    "build": "npm --prefix frontend run build",
+    "install:all": "npm --prefix frontend install && npm --prefix services/jsonl-api install"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "concurrently": "^9.0.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "vite": "^5.4.8"
-  },
-  "allowScripts": {
-    "esbuild@0.21.5": true
+    "concurrently": "^9.0.1"
   }
 }

@@ -1,0 +1,13 @@
+{
+  "name": "custom-dev-tools-jsonl-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node/Express backend that indexes and pages huge JSON/JSONL files.",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}

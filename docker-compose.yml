@@ -14,7 +14,7 @@ services:
   # API Client backend: FastAPI, talks to SQL Server, proxies outbound calls.
   api-client:
     build:
-      context: ./py-server
+      context: ./services/api-client
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-}
     container_name: devtools-api-client
@@ -33,8 +33,7 @@ services:
   # JSON/JSONL viewer backend: Express file indexer.
   jsonl-api:
     build:
-      context: .
-      dockerfile: server/Dockerfile
+      context: ./services/jsonl-api
     container_name: devtools-jsonl-api
     # Optional: mount host data to browse local JSONL files inside the container.
     # volumes:
@@ -44,7 +43,7 @@ services:
   # Frontend (nginx) — serves the SPA and reverse-proxies /api and /client.
   web:
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: devtools-web
     ports:
