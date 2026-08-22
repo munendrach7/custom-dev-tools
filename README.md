@@ -1,10 +1,11 @@
 # Custom Dev Tools
 
-A dark-themed workspace that hosts multiple developer tools behind a single launcher.
-Pick a tool from the home menu and dive in. Built to be extended — more tools can be
-added to the registry over time.
+Custom Dev Tools is a single web app that brings several everyday developer tools together
+behind one home menu. Open the app, pick a tool, and start working — a **← Tools** button
+takes you back to the menu at any time. New tools can be added over time without changing
+how you use the rest.
 
-Current tools:
+Available tools:
 
 | Tool | What it does |
 | ---- | ------------ |
@@ -29,29 +30,29 @@ virtualized table with per-column value counts.
 
 ## Project structure
 
-The repo is organized like a product, with the frontend, each backend service, and their
-Docker assets cleanly separated:
+Each part of the app lives in its own folder — the web UI, the two backend services, and
+the files needed to run everything in Docker:
 
 ```
 custom-dev-tools/
-├── docker-compose.yml          # orchestrates web + both backends + SQL Server
+├── docker-compose.yml          # runs the web UI, both backends, and SQL Server together
 ├── .env.example                # configuration template
-├── package.json                # monorepo root / dev orchestrator (concurrently)
+├── package.json                # dev helper scripts to run everything at once
 ├── docs/screenshots/           # images used in this README
-├── frontend/                   # React + Vite + Fluent UI SPA
-│   ├── Dockerfile              # build SPA, serve via nginx
-│   ├── nginx.conf              # SPA + reverse proxy to /api and /client
+├── frontend/                   # the web UI (React + Vite + Fluent UI)
+│   ├── Dockerfile              # builds the UI and serves it via nginx
+│   ├── nginx.conf              # serves the UI and forwards /api and /client to backends
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── package.json
 │   ├── public/                 # favicon and static assets
 │   └── src/                    # app code (launcher, viewer, apiclient/)
 └── services/
-    ├── jsonl-api/              # Node/Express JSON/JSONL file indexer
+    ├── jsonl-api/              # Node/Express backend for the JSON/JSONL viewer
     │   ├── Dockerfile
     │   ├── package.json
     │   └── src/index.js
-    └── api-client/            # Python/FastAPI API-Client backend
+    └── api-client/            # Python/FastAPI backend for the API Client
         ├── Dockerfile
         ├── requirements.txt
         └── app/               # FastAPI app (auth, models, routes, proxy)
@@ -93,17 +94,17 @@ later is just a new entry in `TOOLS` in `frontend/src/App.jsx` plus its componen
 - **`services/jsonl-api/`** — an **Express (Node)** service powering the JSON/JSONL viewer
   (byte-offset line index for random access into huge files). Routes under `/api/*`.
 
-## Architecture
+## How it fits together
 
 ```
-Browser (React SPA)
+Browser (the web UI)
    |
-   |-- /api/*     -> Node   (services/jsonl-api/)   JSON/JSONL file indexing
+   |-- /api/*     -> Node   (services/jsonl-api/)   JSON/JSONL file reading
    \-- /client/*  -> Python (services/api-client/)  API Client + SQL + outbound proxy
 ```
 
-In Docker, an **nginx** container serves the built SPA and reverse-proxies `/api` and
-`/client` to the two backends.
+When running in Docker, an **nginx** container serves the web UI and forwards `/api` and
+`/client` requests to the two backends.
 
 ## Run with Docker (recommended)
 
@@ -116,7 +117,7 @@ Then open **http://localhost:8080**.
 
 | Container | Service | Build context | Role |
 | --------- | ------- | ------------- | ---- |
-| `devtools-web` | `web` (nginx) | `frontend/` | Serves the SPA, proxies `/api` and `/client`. |
+| `devtools-web` | `web` (nginx) | `frontend/` | Serves the web UI, forwards `/api` and `/client`. |
 | `devtools-jsonl-api` | `jsonl-api` (Node) | `services/jsonl-api/` | JSON/JSONL backend. |
 | `devtools-api-client` | `api-client` (Python/FastAPI) | `services/api-client/` | API Client backend. |
 | `devtools-db` | `db` (SQL Server 2022) | image | SQL database for accounts, collections, requests, environments, history. |
@@ -130,10 +131,10 @@ Behind a corporate pip mirror or egress proxy? Set `PIP_INDEX_URL` (build time) 
 
 ## Run locally (without Docker)
 
-Install dependencies for each package, then start everything with the root orchestrator:
+Install the dependencies for each part, then start everything with one command:
 
 ```bash
-npm install                 # root dev tools (concurrently)
+npm install                 # dev helper (runs all three at once)
 npm run install:all         # installs frontend/ and services/jsonl-api/ deps
 
 # Python backend (API Client)
