@@ -257,6 +257,17 @@ button.primary:hover:not(:disabled) {
   flex: 1;
 }
 
+.search-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.search-group .search-input {
+  min-width: 220px;
+}
+
 /* Virtual table */
 .table-wrap {
   flex: 1;

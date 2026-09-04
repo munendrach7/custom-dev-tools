@@ -19,6 +19,7 @@ export const api = {
   records: (path, start, limit) => post('/api/records', { path, start, limit }),
   count: (path, column, scope, topN) =>
     post('/api/count', { path, column, scope, topN }),
+  search: (path, query, limit) => post('/api/search', { path, query, limit }),
   readFile: (path) => post('/api/readfile', { path }),
 };
 

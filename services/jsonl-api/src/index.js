@@ -279,6 +279,53 @@ app.post('/api/count', async (req, res) => {
   }
 });
 
+/**
+ * Full streaming search: returns records whose raw line contains the query
+ * (case-insensitive substring match) up to a cap. Works on very large files
+ * without loading everything into memory.
+ */
+app.post('/api/search', async (req, res) => {
+  try {
+    const { path: absPath, query, limit = 5000, caseSensitive = false } = req.body || {};
+    if (!absPath || !query || typeof query !== 'string') {
+      return res.status(400).json({ error: 'path and query are required' });
+    }
+    const cap = Math.min(Math.max(1, limit), 20000);
+    const needle = caseSensitive ? query : query.toLowerCase();
+    const records = [];
+    let index = -1;
+    let matched = 0;
+    let capped = false;
+
+    await new Promise((resolve, reject) => {
+      const rl = readline.createInterface({
+        input: fs.createReadStream(absPath, { highWaterMark: 1 << 20 }),
+        crlfDelay: Infinity,
+      });
+      rl.on('line', (line) => {
+        index++;
+        if (!line.trim()) return;
+        const hay = caseSensitive ? line : line.toLowerCase();
+        if (hay.indexOf(needle) === -1) return;
+        matched++;
+        if (records.length < cap) {
+          const p = safeParse(line);
+          if (p.ok) records.push({ __index: index, ...p.value });
+          else records.push({ __index: index, __error: p.error, __raw: line });
+        } else {
+          capped = true;
+        }
+      });
+      rl.on('close', resolve);
+      rl.on('error', reject);
+    });
+
+    res.json({ query, matched, capped, limit: cap, records });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Read a raw file's text by path (used by the JSON viewer and pasted-source fallbacks).
 app.post('/api/readfile', async (req, res) => {
   try {

@@ -20,6 +20,22 @@ export function parseJsonlText(text) {
   return records;
 }
 
+// Filter in-memory records whose JSON contains the query (case-insensitive
+// substring match). Re-indexes results so positions stay contiguous.
+export function filterRecords(records, query, caseSensitive = false) {
+  const q = caseSensitive ? query : query.toLowerCase();
+  const out = [];
+  for (const rec of records) {
+    const { __index, ...rest } = rec || {};
+    let hay = JSON.stringify(rest);
+    if (!caseSensitive) hay = hay.toLowerCase();
+    if (hay.indexOf(q) !== -1) {
+      out.push({ ...rec, __index: out.length });
+    }
+  }
+  return out;
+}
+
 export function inferColumns(records, sample = 1000) {
   const metaKeys = new Set();
   const recordKeys = new Set();

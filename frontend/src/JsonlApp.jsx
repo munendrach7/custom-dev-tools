@@ -1,12 +1,28 @@
 import React, { useCallback, useMemo, useState, useRef } from 'react';
 import { Button, Input, Textarea, TabList, Tab, Spinner } from '@fluentui/react-components';
-import { DocumentArrowUp16Regular, FolderArrowUp16Regular } from '@fluentui/react-icons';
+import { DocumentArrowUp16Regular, FolderArrowUp16Regular, Search16Regular, Dismiss16Regular } from '@fluentui/react-icons';
 import { api, formatBytes, formatNum } from './api';
-import { parseJsonlText, inferColumns, countColumn } from './clientData';
+import { parseJsonlText, inferColumns, countColumn, filterRecords } from './clientData';
 import VirtualTable from './VirtualTable';
 import Modal from './Modal';
 import JsonTree from './JsonTree';
 import CountPanel from './CountPanel';
+
+// Build a table view backed by an in-memory record array.
+function makeRecordsView(records, columns, meta, sourceId) {
+  return {
+    kind: 'table',
+    sourceId,
+    total: records.length,
+    columns,
+    meta,
+    fetchPage: (start, limit) => ({
+      records: records.slice(start, start + limit),
+      total: records.length,
+    }),
+    makeCounter: (column, scope) => () => countColumn(records, column, scope, 100),
+  };
+}
 
 export default function JsonlApp({ onBack }) {
   const [mode, setMode] = useState('jsonl'); // 'jsonl' | 'json'
@@ -22,14 +38,25 @@ export default function JsonlApp({ onBack }) {
   const [jsonModal, setJsonModal] = useState(null); // { data, title }
   const [countModal, setCountModal] = useState(null); // { column, runCount }
 
+  const [searchText, setSearchText] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [filtered, setFiltered] = useState(null); // { query, view, matched, capped }
+
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
+
+  const clearSearch = useCallback(() => {
+    setSearchText('');
+    setFiltered(null);
+  }, []);
 
   const resetOutputs = () => {
     setFiles([]);
     setActivePath(null);
     setView(null);
     setError(null);
+    setSearchText('');
+    setFiltered(null);
   };
 
   // Build a table view backed by a server-indexed file.
@@ -37,6 +64,8 @@ export default function JsonlApp({ onBack }) {
     setActivePath(file.path);
     setView(null);
     setError(null);
+    setSearchText('');
+    setFiltered(null);
     try {
       const columns = await api.columns(file.path, 500);
       setView({
@@ -47,6 +76,14 @@ export default function JsonlApp({ onBack }) {
         meta: { name: file.name, path: file.path, size: file.size },
         fetchPage: (start, limit) => api.records(file.path, start, limit),
         makeCounter: (column, scope) => () => api.count(file.path, column, scope, 100),
+        runSearch: async (q) => {
+          const r = await api.search(file.path, q, 5000);
+          return {
+            records: r.records.map((rec, i) => ({ ...rec, __index: i })),
+            matched: r.matched,
+            capped: r.capped,
+          };
+        },
       });
     } catch (err) {
       setError(err.message);
@@ -56,18 +93,14 @@ export default function JsonlApp({ onBack }) {
   // Build a table view from an in-memory record array (pasted JSONL).
   const openLocalRecords = useCallback((records, meta) => {
     const columns = inferColumns(records);
-    setView({
-      kind: 'table',
-      sourceId: meta.sourceId,
-      total: records.length,
-      columns,
-      meta,
-      fetchPage: (start, limit) => ({
-        records: records.slice(start, start + limit),
-        total: records.length,
-      }),
-      makeCounter: (column, scope) => () => countColumn(records, column, scope, 100),
-    });
+    setSearchText('');
+    setFiltered(null);
+    const v = makeRecordsView(records, columns, meta, meta.sourceId);
+    v.runSearch = async (q) => {
+      const matches = filterRecords(records, q);
+      return { records: matches, matched: matches.length, capped: false };
+    };
+    setView(v);
   }, []);
 
   // --- Actions ---
@@ -166,6 +199,32 @@ export default function JsonlApp({ onBack }) {
     setMode(m);
     resetOutputs();
   };
+
+  // Run a search against the current base table view, producing a filtered view.
+  const runFilter = useCallback(async () => {
+    if (!view || view.kind !== 'table' || typeof view.runSearch !== 'function') return;
+    const q = searchText.trim();
+    if (!q) {
+      setFiltered(null);
+      return;
+    }
+    setSearching(true);
+    setError(null);
+    try {
+      const { records, matched, capped } = await view.runSearch(q);
+      const fv = makeRecordsView(
+        records,
+        view.columns,
+        { ...view.meta, filtered: true },
+        view.sourceId + '::search::' + q
+      );
+      setFiltered({ query: q, view: fv, matched: matched ?? records.length, capped: !!capped });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSearching(false);
+    }
+  }, [view, searchText]);
 
   const totalRecords = useMemo(
     () => files.reduce((a, f) => a + f.lineCount, 0),
@@ -329,11 +388,20 @@ export default function JsonlApp({ onBack }) {
             </div>
           )}
 
-          {view?.kind === 'table' && (
+          {view?.kind === 'table' && (() => {
+            const tableView = filtered ? filtered.view : view;
+            return (
             <>
               <div className="main-toolbar">
                 <span className="badge mono">{view.meta.name}</span>
-                <span>{formatNum(view.total)} records</span>
+                {filtered ? (
+                  <span>
+                    {formatNum(filtered.matched)} of {formatNum(view.total)} match
+                    {filtered.capped ? ' (capped at 5000)' : ''}
+                  </span>
+                ) : (
+                  <span>{formatNum(view.total)} records</span>
+                )}
                 {view.meta.size != null && (
                   <span className="muted">· {formatBytes(view.meta.size)}</span>
                 )}
@@ -341,6 +409,39 @@ export default function JsonlApp({ onBack }) {
                   · {view.columns.metaColumns.length} meta + {view.columns.recordColumns.length} record cols
                 </span>
                 <span className="grow" />
+                <div className="search-group">
+                  <Input
+                    size="small"
+                    className="search-input"
+                    contentBefore={<Search16Regular />}
+                    contentAfter={
+                      filtered ? (
+                        <Dismiss16Regular
+                          style={{ cursor: 'pointer' }}
+                          title="Clear search"
+                          onClick={clearSearch}
+                        />
+                      ) : undefined
+                    }
+                    placeholder="Search records…"
+                    value={searchText}
+                    onChange={(_, d) => setSearchText(d.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') runFilter();
+                      else if (e.key === 'Escape') clearSearch();
+                    }}
+                    spellCheck={false}
+                  />
+                  <Button
+                    size="small"
+                    appearance="primary"
+                    onClick={runFilter}
+                    disabled={searching || !searchText.trim()}
+                    icon={searching ? <Spinner size="tiny" /> : undefined}
+                  >
+                    Search
+                  </Button>
+                </div>
                 {view.meta.pasted ? (
                   <span className="muted">pasted source</span>
                 ) : (
@@ -350,21 +451,22 @@ export default function JsonlApp({ onBack }) {
                 )}
               </div>
               <VirtualTable
-                key={view.sourceId}
-                sourceId={view.sourceId}
-                total={view.total}
-                columns={view.columns}
-                fetchPage={view.fetchPage}
+                key={tableView.sourceId}
+                sourceId={tableView.sourceId}
+                total={tableView.total}
+                columns={tableView.columns}
+                fetchPage={tableView.fetchPage}
                 onOpenJson={(data, title) => setJsonModal({ data, title })}
                 onCount={(col) =>
                   setCountModal({
                     column: col.fullName || col.key,
-                    runCount: view.makeCounter(col.key, col.scope),
+                    runCount: tableView.makeCounter(col.key, col.scope),
                   })
                 }
               />
             </>
-          )}
+            );
+          })()}
 
           {view?.kind === 'json' && (
             <>
